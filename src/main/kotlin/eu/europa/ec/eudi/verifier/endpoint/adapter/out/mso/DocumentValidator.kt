@@ -568,9 +568,13 @@ private fun HandoverInfo.toHandover(
     val (identifier, handoverInfoBytes) =
         when (this) {
             is HandoverInfo.OpenID4VPHandoverInfo -> {
+                // OpenID4VP 1.0 wallets (e.g. EUDI/av wallet) that use the redirect_uri client identifier
+                // scheme compute the handover clientId as "redirect_uri:<response_uri>", ignoring the
+                // verifier's pre-registered client_id. Match that so mdoc device authentication validates.
+                val effectiveClientId = "${OpenId4VPSpec.REDIRECT_URI}:${responseUri.toExternalForm()}"
                 val element =
                     listOf(
-                        clientId.clientId.toDataElement(),
+                        effectiveClientId.toDataElement(),
                         nonce.value.toDataElement(),
                         ephemeralEncryptionKey?.computeThumbprint()?.decode()?.toDataElement() ?: NullElement(),
                         responseUri.toExternalForm().toDataElement(),
