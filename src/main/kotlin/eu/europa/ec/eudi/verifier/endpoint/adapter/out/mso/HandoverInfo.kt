@@ -25,6 +25,12 @@ sealed interface HandoverInfo {
         val nonce: Nonce,
         val ephemeralEncryptionKey: JWK?,
         val responseUri: URL,
+        /**
+         * When `true`, the device-auth handover uses the client identifier in
+         * `redirect_uri:<response_uri>` form instead of [clientId]'s own value.
+         * See [VerifierConfig.redirectUriClientIdInMdocDeviceAuthHandover].
+         */
+        val useRedirectUriClientId: Boolean = false,
     ) : HandoverInfo {
         init {
             if (null != ephemeralEncryptionKey) {
@@ -59,6 +65,7 @@ sealed interface HandoverInfo {
                         is ResponseMode.DirectPostJwt -> responseMode.ephemeralResponseEncryptionKey.toPublicJWK()
                     },
                 responseUri = config.responseUriBuilder(presentation.requestId),
+                useRedirectUriClientId = config.redirectUriClientIdInMdocDeviceAuthHandover,
             )
     }
 }

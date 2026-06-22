@@ -33,7 +33,65 @@ data class WalletResponseTO(
     @SerialName(OpenId4VPSpec.VP_TOKEN) val vpToken: JsonObject? = null,
     @SerialName(RFC6749.ERROR) val error: String? = null,
     @SerialName(RFC6749.ERROR_DESCRIPTION) val errorDescription: String? = null,
+    @SerialName("trust_info") val trustInfo: TrustInfoTO? = null,
 )
+
+/**
+ * The per-check trust report attached to an accepted wallet response, exposed to the frontend.
+ * Present only when the verifier runs in always-accept mode.
+ */
+@Serializable
+data class TrustInfoTO(
+    val trusted: Boolean,
+    val documents: List<DocumentTrustInfoTO>,
+)
+
+@Serializable
+data class DocumentTrustInfoTO(
+    val index: Int,
+    @SerialName("document_type") val documentType: String,
+    val valid: Boolean,
+    val checks: Map<String, CheckOutcomeTO>,
+)
+
+@Serializable
+data class CheckOutcomeTO(
+    val status: CheckStatusTO,
+    val detail: String? = null,
+)
+
+@Serializable
+enum class CheckStatusTO {
+    @SerialName("passed")
+    Passed,
+
+    @SerialName("skipped")
+    Skipped,
+
+    @SerialName("failed")
+    Failed,
+}
+
+internal fun TrustInfo.toTO(): TrustInfoTO =
+    TrustInfoTO(
+        trusted = trusted,
+        documents =
+            documents.map { document ->
+                DocumentTrustInfoTO(
+                    index = document.index,
+                    documentType = document.documentType,
+                    valid = document.valid,
+                    checks = document.checks.entries.associate { (check, outcome) -> check.name to outcome.toTO() },
+                )
+            },
+    )
+
+private fun CheckOutcome.toTO(): CheckOutcomeTO =
+    when (this) {
+        CheckOutcome.Passed -> CheckOutcomeTO(CheckStatusTO.Passed)
+        is CheckOutcome.Skipped -> CheckOutcomeTO(CheckStatusTO.Skipped, reason)
+        is CheckOutcome.Failed -> CheckOutcomeTO(CheckStatusTO.Failed, detail)
+    }
 
 internal fun WalletResponse.toTO(): WalletResponseTO {
     fun VerifiablePresentation.toJsonElement(): JsonElement =
@@ -109,7 +167,7 @@ class GetWalletResponseLive(
         }
 
     private suspend fun found(presentation: Presentation.Submitted): Found<WalletResponseTO> {
-        val walletResponse = presentation.walletResponse.toTO()
+        val walletResponse = presentation.walletResponse.toTO().copy(trustInfo = presentation.trustInfo?.toTO())
         logVerifierGotWalletResponse(presentation, walletResponse)
         return Found(walletResponse)
     }

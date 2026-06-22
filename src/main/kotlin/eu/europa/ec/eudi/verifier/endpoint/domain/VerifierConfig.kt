@@ -307,6 +307,25 @@ data class VerifierConfig(
     val clientMetaData: ClientMetaData,
     val transactionDataHashAlgorithm: HashAlgorithm,
     val authorizationRequestUri: UnresolvedAuthorizationRequestUri,
+    /**
+     * Compatibility switch for mso_mdoc device authentication: when `true`, the OpenID4VP device-auth
+     * handover is computed with the client identifier in `redirect_uri:<response_uri>` form instead of
+     * the verifier's own [VerifierId.clientId].
+     *
+     * This is required for OpenID4VP 1.0 wallets that use the `redirect_uri` client identifier prefix
+     * (and therefore derive the handover client_id from the response URI), but it is incompatible with
+     * pre-registered / x509 wallets, which expect [VerifierId.clientId]. Defaults to `false` (standard
+     * OpenID4VP behavior).
+     */
+    val redirectUriClientIdInMdocDeviceAuthHandover: Boolean = false,
+    /**
+     * When `true`, the verifier never rejects a (well-formed) wallet response on validation grounds:
+     * every check is run in collect-all mode, the submission is always accepted, and a per-check
+     * [TrustInfo] report is attached to the [Presentation.Submitted] state and exposed to the frontend.
+     * When `false` (default), the verifier keeps the strict fail-fast behavior and rejects invalid
+     * presentations.
+     */
+    val alwaysAcceptWalletResponse: Boolean = false,
 )
 
 /**

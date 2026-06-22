@@ -34,6 +34,7 @@ import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.StatusLis
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.StatusValidationError
 import eu.europa.ec.eudi.verifier.endpoint.domain.Clock
 import eu.europa.ec.eudi.verifier.endpoint.domain.Iso180135
+import eu.europa.ec.eudi.verifier.endpoint.domain.MsoMdocCheck
 import eu.europa.ec.eudi.verifier.endpoint.domain.OpenId4VPSpec
 import eu.europa.ec.eudi.verifier.endpoint.domain.TransactionId
 import id.walt.mdoc.COSECryptoProviderKeyInfo
@@ -148,7 +149,152 @@ class DocumentValidator(
         }
         return document
     }
+
+    /**
+     * Collect-all counterpart of [ensureValid]: runs every applicable check independently and
+     * accumulates the outcomes instead of failing fast. This never raises on a failed check; the
+     * caller turns the result into a per-check trust report (see `documentTrustInfo`) so the
+     * verifier can always accept the submission while still surfacing the full report.
+     *
+     * The structural decoding step ([decodeMso]) and the dependency of the issuer-signature check
+     * on the presence of an extractable certificate chain are preserved: when no chain can be
+     * extracted the signature check is reported as not performed rather than failed.
+     */
+    suspend fun collectChecks(
+        document: MDoc,
+        transactionId: TransactionId? = null,
+        handoverInfo: HandoverInfo? = null,
+    ): DocumentChecks {
+        document.decodeMso()
+
+        val errors = mutableListOf<DocumentError>()
+
+        fun record(error: DocumentError?) {
+            error?.let { errors += it }
+        }
+
+        fun recordAll(accumulated: Nel<DocumentError>?) {
+            accumulated?.let { errors += it }
+        }
+
+        // The certificate chain is extracted from the document itself; it is needed to verify the
+        // issuer signature regardless of whether the chain is anchored in a trusted list.
+        val issuerChain = either { ensureContainsChain(document) }
+
+        // Issuer chain trusted
+        when (issuerChain) {
+            is Either.Left -> {
+                record(issuerChain.value)
+            }
+
+            is Either.Right -> {
+                record(
+                    either {
+                        // A thrown error here (e.g. the trust service is unreachable) must not crash the
+                        // collect-all pipeline — it is reported as a failed trust check instead.
+                        catch({
+                            ensureTrustedChain(document.docType.value, issuerChain.value, isChainTrustedForAttestation)
+                        }) { t ->
+                            raise(DocumentError.X5CNotTrusted("trust check could not be performed: ${t.describe()}"))
+                        }
+                    }.leftOrNull(),
+                )
+            }
+        }
+
+        // Validity info present / not expired
+        record(either { ensureNotExpiredValidityInfo(document, clock, validityInfoShouldBe) }.leftOrNull())
+
+        // Document type matches
+        record(either { ensureMatchingDocumentType(document) }.leftOrNull())
+
+        // Issuer-signed items digests match
+        record(either { ensureDigestsOfIssuerSignedItems(document, issuerSignedItemsShouldBe) }.leftOrNull())
+
+        // Issuer signature valid (and issuer key is EC) — only when a chain is available
+        if (issuerChain is Either.Right) {
+            record(
+                either {
+                    catch({ ensureValidIssuerSignature(document, issuerChain.value) }) {
+                        raise(DocumentError.InvalidIssuerSignature)
+                    }
+                }.leftOrNull(),
+            )
+        }
+
+        // Not revoked
+        record(either { ensureNotRevoked(document, statusListTokenValidator, transactionId) }.leftOrNull())
+
+        // Device-signed checks — only when a handover is available
+        if (null != handoverInfo) {
+            recordAll(
+                either {
+                    catch({ ensureValidDeviceSigned(document, handoverInfo) }) {
+                        raise(DocumentError.InvalidDeviceSignature.nel())
+                    }
+                }.leftOrNull(),
+            )
+        }
+
+        return DocumentChecks(performedChecks(handoverInfo, chainPresent = issuerChain.isRight()), errors)
+    }
+
+    /**
+     * The set of checks that were actually performed for a document given this validator's
+     * configuration, the document shape ([chainPresent]) and whether a [handoverInfo] was supplied.
+     * Checks outside this set are reported as skipped.
+     */
+    private fun performedChecks(
+        handoverInfo: HandoverInfo?,
+        chainPresent: Boolean,
+    ): Set<MsoMdocCheck> =
+        buildSet {
+            add(MsoMdocCheck.IssuerChainTrusted)
+            add(MsoMdocCheck.DocumentTypeMatches)
+            if (chainPresent) {
+                add(MsoMdocCheck.IssuerKeyIsEC)
+                add(MsoMdocCheck.IssuerSignatureValid)
+            }
+            when (validityInfoShouldBe) {
+                ValidityInfoShouldBe.NotExpired -> {
+                    add(MsoMdocCheck.ValidityInfoPresent)
+                    add(MsoMdocCheck.NotExpired)
+                }
+
+                ValidityInfoShouldBe.NotExpiredIfPresent -> {
+                    add(MsoMdocCheck.NotExpired)
+                }
+
+                ValidityInfoShouldBe.Ignored -> {}
+            }
+            if (IssuerSignedItemsShouldBe.Verified == issuerSignedItemsShouldBe) {
+                add(MsoMdocCheck.IssuerSignedItemsValid)
+            }
+            if (null != statusListTokenValidator) {
+                add(MsoMdocCheck.NotRevoked)
+            }
+            if (null != handoverInfo) {
+                add(MsoMdocCheck.DeviceSignedPresent)
+                add(MsoMdocCheck.DeviceKeyAuthorized)
+                add(MsoMdocCheck.DeviceKeyValid)
+                add(MsoMdocCheck.DeviceSignatureValid)
+            }
+        }
 }
+
+/**
+ * The accumulated outcome of running every applicable check on a single document via
+ * [DocumentValidator.collectChecks]: the [performedChecks] and the [errors] gathered (one or more
+ * per failed check). Turned into a [eu.europa.ec.eudi.verifier.endpoint.domain.DocumentTrustInfo]
+ * via `documentTrustInfo`.
+ */
+data class DocumentChecks(
+    val performedChecks: Set<MsoMdocCheck>,
+    val errors: List<DocumentError>,
+)
+
+/** A short, human-readable description of a [Throwable] for use in check failure details. */
+private fun Throwable.describe(): String = message ?: this::class.java.simpleName
 
 context(_: Raise<DocumentError>)
 private fun ensureNotExpiredValidityInfo(
@@ -568,10 +714,16 @@ private fun HandoverInfo.toHandover(
     val (identifier, handoverInfoBytes) =
         when (this) {
             is HandoverInfo.OpenID4VPHandoverInfo -> {
-                // OpenID4VP 1.0 wallets (e.g. EUDI/av wallet) that use the redirect_uri client identifier
-                // scheme compute the handover clientId as "redirect_uri:<response_uri>", ignoring the
-                // verifier's pre-registered client_id. Match that so mdoc device authentication validates.
-                val effectiveClientId = "${OpenId4VPSpec.REDIRECT_URI}:${responseUri.toExternalForm()}"
+                // By default the handover uses the verifier's own client identifier, as required by
+                // OpenID4VP. OpenID4VP 1.0 wallets that use the redirect_uri client identifier prefix
+                // (e.g. the EUDI/av wallet) instead derive it as "redirect_uri:<response_uri>"; for those,
+                // 'useRedirectUriClientId' must be enabled so mdoc device authentication validates.
+                val effectiveClientId =
+                    if (useRedirectUriClientId) {
+                        "${OpenId4VPSpec.REDIRECT_URI}:${responseUri.toExternalForm()}"
+                    } else {
+                        clientId.clientId
+                    }
                 val element =
                     listOf(
                         effectiveClientId.toDataElement(),

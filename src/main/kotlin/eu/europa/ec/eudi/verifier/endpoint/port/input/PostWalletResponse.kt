@@ -36,6 +36,7 @@ import eu.europa.ec.eudi.verifier.endpoint.port.out.persistence.LoadPresentation
 import eu.europa.ec.eudi.verifier.endpoint.port.out.persistence.PresentationEvent
 import eu.europa.ec.eudi.verifier.endpoint.port.out.persistence.PublishPresentationEvent
 import eu.europa.ec.eudi.verifier.endpoint.port.out.persistence.StorePresentation
+import eu.europa.ec.eudi.verifier.endpoint.port.out.presentation.CollectMsoMdocTrustInfo
 import eu.europa.ec.eudi.verifier.endpoint.port.out.presentation.ValidateVerifiablePresentation
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -108,12 +109,14 @@ private suspend fun AuthorisationResponseTO.toDomain(
     presentation: RequestObjectRetrieved,
     validateVerifiablePresentation: ValidateVerifiablePresentation,
     vpFormatsSupported: VpFormatsSupported,
+    alwaysAccept: Boolean,
 ): WalletResponse {
     suspend fun requiredVerifiablePresentations(): VerifiablePresentations =
         verifiablePresentations(
             presentation,
             validateVerifiablePresentation,
             vpFormatsSupported,
+            alwaysAccept,
         )
 
     val maybeError: WalletResponse.Error? = error?.let { WalletResponse.Error(it, errorDescription) }
@@ -125,6 +128,7 @@ private suspend fun AuthorisationResponseTO.verifiablePresentations(
     presentation: RequestObjectRetrieved,
     validateVerifiablePresentation: ValidateVerifiablePresentation,
     vpFormatsSupported: VpFormatsSupported,
+    alwaysAccept: Boolean,
 ): VerifiablePresentations {
     ensureNotNull(vpToken) { WalletResponseValidationError.MissingVpToken }
 
@@ -160,18 +164,26 @@ private suspend fun AuthorisationResponseTO.verifiablePresentations(
                 )
             }
             unvalidatedVerifiablePresentations.map {
-                validateVerifiablePresentation(
-                    presentation,
-                    it,
-                    applicableTransactionData,
-                )
+                // In always-accept mode the raw presentation is kept regardless of its validation
+                // outcome; the per-check verdict is collected separately into the TrustInfo report.
+                if (alwaysAccept) {
+                    it
+                } else {
+                    validateVerifiablePresentation(
+                        presentation,
+                        it,
+                        applicableTransactionData,
+                    )
+                }
             }
         }
     }
 
     val verifiablePresentations = vpToken.toVerifiablePresentations()
-    ensure(presentation.query.satisfiedBy(verifiablePresentations)) {
-        WalletResponseValidationError.RequiredCredentialSetNotSatisfied
+    if (!alwaysAccept) {
+        ensure(presentation.query.satisfiedBy(verifiablePresentations)) {
+            WalletResponseValidationError.RequiredCredentialSetNotSatisfied
+        }
     }
 
     return VerifiablePresentations(verifiablePresentations)
@@ -248,7 +260,10 @@ class PostWalletResponseLive(
     private val createQueryWalletResponseRedirectUri: CreateQueryWalletResponseRedirectUri,
     private val publishPresentationEvent: PublishPresentationEvent,
     private val validateVerifiablePresentation: ValidateVerifiablePresentation,
+    private val collectMsoMdocTrustInfo: CollectMsoMdocTrustInfo,
 ) : PostWalletResponse {
+    private val alwaysAccept: Boolean = verifierConfig.alwaysAcceptWalletResponse
+
     context(_: Raise<WalletResponseValidationError>)
     override suspend operator fun invoke(
         requestId: RequestId,
@@ -361,16 +376,37 @@ class PostWalletResponseLive(
                 presentation,
                 validateVerifiablePresentation,
                 verifierConfig.clientMetaData.vpFormatsSupported,
+                alwaysAccept,
             )
+
+        val trustInfo = if (alwaysAccept) collectTrustInfo(presentation, walletResponse) else null
 
         val responseCode =
             when (presentation.getWalletResponseMethod) {
                 GetWalletResponseMethod.Poll -> null
                 is GetWalletResponseMethod.Redirect -> generateResponseCode()
             }
-        return either { presentation.submit(clock, walletResponse, responseCode) }
+        return either { presentation.submit(clock, walletResponse, responseCode, trustInfo) }
             .mapLeft { IllegalArgumentException(it) }
             .getOrThrow()
+    }
+
+    /**
+     * Aggregates the per-check [TrustInfo] reports of all mso_mdoc presentations in [walletResponse]
+     * into a single report. Returns `null` when there is nothing to report (error response, or no
+     * mso_mdoc presentation).
+     */
+    private suspend fun collectTrustInfo(
+        presentation: RequestObjectRetrieved,
+        walletResponse: WalletResponse,
+    ): TrustInfo? {
+        if (walletResponse !is WalletResponse.VpToken) return null
+        val documents =
+            walletResponse.verifiablePresentations.value.values
+                .flatten()
+                .mapNotNull { collectMsoMdocTrustInfo.collect(presentation, it) }
+                .flatMap { it.documents }
+        return documents.takeIf { it.isNotEmpty() }?.let { TrustInfo(it) }
     }
 
     private suspend fun logWalletResponsePosted(

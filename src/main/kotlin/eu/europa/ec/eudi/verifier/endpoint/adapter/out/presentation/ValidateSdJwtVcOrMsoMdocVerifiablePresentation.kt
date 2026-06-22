@@ -35,6 +35,7 @@ import eu.europa.ec.eudi.verifier.endpoint.adapter.out.sdjwtvc.description
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.sdjwtvc.status
 import eu.europa.ec.eudi.verifier.endpoint.domain.*
 import eu.europa.ec.eudi.verifier.endpoint.port.input.WalletResponseValidationError
+import eu.europa.ec.eudi.verifier.endpoint.port.out.presentation.CollectMsoMdocTrustInfo
 import eu.europa.ec.eudi.verifier.endpoint.port.out.presentation.ValidateVerifiablePresentation
 import id.walt.mdoc.dataelement.MapElement
 import id.walt.mdoc.dataelement.MapKey
@@ -51,8 +52,36 @@ internal class ValidateSdJwtVcOrMsoMdocVerifiablePresentation(
     private val config: VerifierConfig,
     private val sdJwtVcValidatorFactory: (NonEmptyList<X509Certificate>?) -> SdJwtVcValidator,
     private val deviceResponseValidatorFactory: (NonEmptyList<X509Certificate>?) -> DeviceResponseValidator,
-) : ValidateVerifiablePresentation {
+) : ValidateVerifiablePresentation,
+    CollectMsoMdocTrustInfo {
     private val vpFormatsSupported = config.clientMetaData.vpFormatsSupported
+
+    /**
+     * Collect-all entry point: runs the mso_mdoc device-response validation without rejecting and
+     * returns the per-check [TrustInfo] report. Returns `null` for non-mso formats or when the
+     * device response cannot be decoded.
+     */
+    override suspend fun collect(
+        presentation: Presentation.RequestObjectRetrieved,
+        verifiablePresentation: VerifiablePresentation,
+    ): TrustInfo? =
+        when (verifiablePresentation.format) {
+            Format.MsoMdoc -> {
+                if (verifiablePresentation !is VerifiablePresentation.Str) {
+                    null
+                } else {
+                    val validator = deviceResponseValidatorFactory(presentation.issuerChain)
+                    val handoverInfo = HandoverInfo(presentation, config)
+                    validator
+                        .collectTrustInfo(verifiablePresentation.value, presentation.id, handoverInfo)
+                        .getOrNull()
+                }
+            }
+
+            else -> {
+                null
+            }
+        }
 
     context(_: Raise<WalletResponseValidationError>)
     override suspend fun invoke(

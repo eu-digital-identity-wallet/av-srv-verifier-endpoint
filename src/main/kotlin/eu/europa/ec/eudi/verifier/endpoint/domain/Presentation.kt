@@ -222,6 +222,11 @@ sealed interface Presentation {
         val walletResponse: WalletResponse,
         val nonce: Nonce,
         val responseCode: ResponseCode?,
+        /**
+         * Collect-all trust report for the submitted wallet response. Populated only when the verifier
+         * runs in always-accept mode (see [VerifierConfig.alwaysAcceptWalletResponse]); `null` otherwise.
+         */
+        val trustInfo: TrustInfo? = null,
     ) : Presentation {
         companion object {
             context(_: Raise<String>)
@@ -230,6 +235,7 @@ sealed interface Presentation {
                 at: Instant,
                 walletResponse: WalletResponse,
                 responseCode: ResponseCode?,
+                trustInfo: TrustInfo? = null,
             ): Submitted =
                 with(requestObjectRetrieved) {
                     Submitted(
@@ -241,6 +247,7 @@ sealed interface Presentation {
                         walletResponse,
                         nonce,
                         responseCode,
+                        trustInfo,
                     )
                 }
         }
@@ -320,7 +327,8 @@ fun Presentation.RequestObjectRetrieved.submit(
     clock: Clock,
     walletResponse: WalletResponse,
     responseCode: ResponseCode?,
-): Presentation.Submitted = Presentation.Submitted.submitted(this, clock.now(), walletResponse, responseCode)
+    trustInfo: TrustInfo? = null,
+): Presentation.Submitted = Presentation.Submitted.submitted(this, clock.now(), walletResponse, responseCode, trustInfo)
 
 context(_: Raise<String>)
 fun Presentation.Submitted.timedOut(clock: Clock): Presentation.TimedOut = Presentation.TimedOut.timeOut(this, clock.now())

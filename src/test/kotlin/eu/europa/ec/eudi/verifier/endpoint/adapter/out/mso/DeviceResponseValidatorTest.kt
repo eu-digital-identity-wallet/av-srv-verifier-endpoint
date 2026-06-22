@@ -26,7 +26,9 @@ import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrustedForContextF
 import eu.europa.ec.eudi.verifier.endpoint.TestContext
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.consultation.Ignored
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.consultation.usingTrustAnchors
+import eu.europa.ec.eudi.verifier.endpoint.domain.CheckOutcome
 import eu.europa.ec.eudi.verifier.endpoint.domain.Clock
+import eu.europa.ec.eudi.verifier.endpoint.domain.MsoMdocCheck
 import eu.europa.ec.eudi.verifier.endpoint.domain.Nonce
 import eu.europa.ec.eudi.verifier.endpoint.domain.VerifierId
 import eu.europa.ec.eudi.verifier.endpoint.domain.toJavaDate
@@ -40,8 +42,10 @@ import java.security.KeyStore
 import java.security.cert.X509Certificate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 object Data {
     /**
@@ -266,6 +270,107 @@ class DeviceResponseValidatorTest {
                 }
             assertIs<DocumentError.DeviceKeyNotAuthorizedToSignItems>(documentError)
         }
+
+    @Test
+    fun `collectTrustInfo reports an untrusted chain while still running the remaining checks`() =
+        runTest {
+            val trustInfo =
+                deviceResponseValidator(Data.caCerts, clock)
+                    .collectTrustInfo(Data.MdlVP)
+                    .getOrElse { error("Unexpected device response error: $it") }
+
+            assertEquals(1, trustInfo.documents.size)
+            val document = trustInfo.documents.single()
+            assertEquals(0, document.index)
+            assertFalse(document.valid)
+            assertFalse(trustInfo.trusted)
+
+            // Only the trust check failed; the others were still performed and passed.
+            assertIs<CheckOutcome.Failed>(document.checks[MsoMdocCheck.IssuerChainTrusted])
+            assertEquals(CheckOutcome.Passed, document.checks[MsoMdocCheck.IssuerSignatureValid])
+            assertEquals(CheckOutcome.Passed, document.checks[MsoMdocCheck.DocumentTypeMatches])
+            assertEquals(setOf(MsoMdocCheck.IssuerChainTrusted), document.failures.keys)
+        }
+
+    @Test
+    fun `collectTrustInfo collects per-document results without short-circuiting on the expired one`() =
+        runTest {
+            val trustInfo =
+                deviceResponseValidator(Data.caCerts, clock)
+                    .collectTrustInfo(Data.ThreeDocumentVP)
+                    .getOrElse { error("Unexpected device response error: $it") }
+
+            assertEquals(3, trustInfo.documents.size)
+            assertTrue(trustInfo.documents[0].valid)
+            assertTrue(trustInfo.documents[1].valid)
+
+            val expired = trustInfo.documents[2]
+            assertEquals(2, expired.index)
+            assertFalse(expired.valid)
+            assertIs<CheckOutcome.Failed>(expired.checks[MsoMdocCheck.NotExpired])
+            assertEquals(setOf(MsoMdocCheck.NotExpired), expired.failures.keys)
+
+            assertFalse(trustInfo.trusted)
+        }
+
+    @Test
+    fun `collectTrustInfo marks configuration-disabled and not-performed checks as skipped and accepts a valid document`() =
+        runTest {
+            // No handoverInfo → the device-signed checks are not performed (reported as skipped),
+            // which also keeps this test independent of the redirect_uri device-auth handover.
+            val trustInfo =
+                ignoreTrustDocumentValidator(clock)
+                    .collectTrustInfo(Data.VPWithDeviceSignedItems)
+                    .getOrElse { error("Unexpected device response error: $it") }
+
+            assertEquals(1, trustInfo.documents.size)
+            val document = trustInfo.documents.single()
+            assertTrue(document.valid)
+            assertTrue(trustInfo.trusted)
+
+            // Validity-info checks are disabled (Ignored), revocation has no validator, and no
+            // handover was supplied → all reported as skipped.
+            assertIs<CheckOutcome.Skipped>(document.checks[MsoMdocCheck.NotExpired])
+            assertIs<CheckOutcome.Skipped>(document.checks[MsoMdocCheck.ValidityInfoPresent])
+            assertIs<CheckOutcome.Skipped>(document.checks[MsoMdocCheck.NotRevoked])
+            assertIs<CheckOutcome.Skipped>(document.checks[MsoMdocCheck.DeviceSignatureValid])
+            // The performed issuer checks still pass.
+            assertEquals(CheckOutcome.Passed, document.checks[MsoMdocCheck.IssuerSignatureValid])
+        }
+
+    @Test
+    fun `collectTrustInfo reports an unauthorized device key instead of short-circuiting`() =
+        runTest {
+            val trustInfo =
+                ignoreTrustDocumentValidator(clock)
+                    .collectTrustInfo(Data.VPWithUnauthorizedDeviceSignedItems, handoverInfo = deviceSignedHandoverInfo())
+                    .getOrElse { error("Unexpected device response error: $it") }
+
+            val document = trustInfo.documents.single()
+            assertFalse(document.valid)
+            assertFalse(trustInfo.trusted)
+            // The unauthorized-device-key failure is captured; collect-all keeps gathering device
+            // checks rather than stopping at the first one.
+            assertIs<CheckOutcome.Failed>(document.checks[MsoMdocCheck.DeviceKeyAuthorized])
+        }
+
+    @Test
+    fun `collectTrustInfo turns a thrown trust-check error into a failed check instead of crashing`() =
+        runTest {
+            // No classification matches the mDL docType → the trust check throws (IllegalStateException),
+            // simulating the same failure shape as an unreachable trust service. Collect-all must contain
+            // it and still produce a report, rather than letting the exception escape.
+            val trustInfo =
+                noMatchingClassificationValidator(clock)
+                    .collectTrustInfo(Data.MdlVP)
+                    .getOrElse { error("Unexpected device response error: $it") }
+
+            val document = trustInfo.documents.single()
+            assertFalse(document.valid)
+            assertFalse(trustInfo.trusted)
+            val trust = assertIs<CheckOutcome.Failed>(document.checks[MsoMdocCheck.IssuerChainTrusted])
+            assertTrue(trust.detail.contains("trust check could not be performed"))
+        }
 }
 
 private fun deviceResponseValidator(
@@ -309,6 +414,26 @@ private fun deviceSignedHandoverInfo(): HandoverInfo {
         ephemeralEncryptionKey = null,
         responseUri = URL("https://example.com/direct_post"),
     )
+}
+
+private fun noMatchingClassificationValidator(clock: Clock): DeviceResponseValidator {
+    val documentValidator =
+        DocumentValidator(
+            clock = clock,
+            validityInfoShouldBe = ValidityInfoShouldBe.Ignored,
+            isChainTrustedForAttestation =
+                IsChainTrustedForAttestation(
+                    IsChainTrustedForContextF.Ignored,
+                    // Only PID is classified; the mDL docType has no classification, so the trust
+                    // check throws instead of raising.
+                    AttestationClassifications(
+                        pids = AttestationIdentifierPredicate.mdocMatching("^eu\\.europa\\.ec\\.eudi\\.pid\\.1$".toRegex()),
+                        eaAs = emptyMap(),
+                    ),
+                ),
+            statusListTokenValidator = null,
+        )
+    return DeviceResponseValidator(documentValidator)
 }
 
 private fun ignoreTrustDocumentValidator(clock: Clock): DeviceResponseValidator {

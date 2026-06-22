@@ -200,7 +200,7 @@ internal class AppBeans :
         }
 
         registerBean { GenerateResponseCode.Random }
-        registerBean { PostWalletResponseLive(bean(), bean(), bean(), bean(), bean(), bean(), bean(), bean(), bean()) }
+        registerBean { PostWalletResponseLive(bean(), bean(), bean(), bean(), bean(), bean(), bean(), bean(), bean(), bean()) }
         registerBean { GenerateEphemeralEncryptionKeyPairNimbus(bean<VerifierConfig>().clientMetaData.responseEncryptionOption) }
         registerBean { GetWalletResponseLive(bean(), bean(), bean()) }
         registerBean { GetPresentationEventsLive(bean(), bean()) }
@@ -585,6 +585,12 @@ private fun verifierConfig(environment: Environment): VerifierConfig {
                 environment.getProperty("verifier.authorizationRequestUri", "haip-vp://"),
             ).getOrThrow()
 
+    val redirectUriClientIdInMdocDeviceAuthHandover =
+        environment.getProperty("verifier.mdoc.redirectUriClientIdInDeviceAuthHandover", Boolean::class.java, false)
+
+    val alwaysAcceptWalletResponse =
+        environment.getProperty("verifier.alwaysAcceptWalletResponse", Boolean::class.java, false)
+
     return VerifierConfig(
         verifierId = verifierId,
         requestJarOption = requestJarOption,
@@ -595,6 +601,8 @@ private fun verifierConfig(environment: Environment): VerifierConfig {
         clientMetaData = environment.clientMetaData(),
         transactionDataHashAlgorithm = transactionDataHashAlgorithm,
         authorizationRequestUri = authorizationRequestUri,
+        redirectUriClientIdInMdocDeviceAuthHandover = redirectUriClientIdInMdocDeviceAuthHandover,
+        alwaysAcceptWalletResponse = alwaysAcceptWalletResponse,
     )
 }
 

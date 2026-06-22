@@ -15,6 +15,7 @@
  */
 package eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso
 
+import arrow.core.Either
 import arrow.core.NonEmptyList
 import arrow.core.mapOrAccumulate
 import arrow.core.raise.Raise
@@ -22,7 +23,9 @@ import arrow.core.raise.context.bind
 import arrow.core.raise.context.ensure
 import arrow.core.raise.context.raise
 import arrow.core.raise.context.withError
+import arrow.core.raise.either
 import eu.europa.ec.eudi.verifier.endpoint.domain.TransactionId
+import eu.europa.ec.eudi.verifier.endpoint.domain.TrustInfo
 import id.walt.mdoc.dataretrieval.DeviceResponse
 import id.walt.mdoc.dataretrieval.DeviceResponseStatus
 import id.walt.mdoc.doc.MDoc
@@ -85,6 +88,40 @@ class DeviceResponseValidator(
     ): List<MDoc> {
         ensureStatusIsOk(deviceResponse)
         return ensureValidDocuments(deviceResponse, documentValidator, transactionId, handoverInfo)
+    }
+
+    /**
+     * Collect-all counterpart of [ensureValid]: instead of failing on the first invalid document,
+     * it runs every applicable check on every document and gathers the results into a [TrustInfo]
+     * report. The verifier can then always accept the wallet's submission and expose the complete
+     * report, while still deriving an overall verdict from [TrustInfo.trusted].
+     *
+     * Structural device-response errors that make a report impossible (the response cannot be
+     * decoded, or it does not carry an OK status) are still returned on the left.
+     */
+    suspend fun collectTrustInfo(
+        vp: String,
+        transactionId: TransactionId? = null,
+        handoverInfo: HandoverInfo? = null,
+    ): Either<DeviceResponseError, TrustInfo> =
+        either {
+            val deviceResponse = ensureCanBeDecoded(vp)
+            collectTrustInfo(deviceResponse, transactionId, handoverInfo)
+        }
+
+    context(_: Raise<DeviceResponseError>)
+    suspend fun collectTrustInfo(
+        deviceResponse: DeviceResponse,
+        transactionId: TransactionId? = null,
+        handoverInfo: HandoverInfo? = null,
+    ): TrustInfo {
+        ensureStatusIsOk(deviceResponse)
+        val documents =
+            deviceResponse.documents.withIndex().map { (index, document) ->
+                val checks = documentValidator.collectChecks(document, transactionId, handoverInfo)
+                documentTrustInfo(index, document.docType.value, checks.errors, checks.performedChecks)
+            }
+        return TrustInfo(documents)
     }
 }
 
