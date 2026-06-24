@@ -424,7 +424,7 @@ curl -v -X POST 'http://localhost:8080/wallet/direct_post' \
 ```HTTP
 HTTP/1.1 200 OK
 {
-  "redirect_uri" : "https://verifier-backend.ageverification.dev/get-wallet-code?response_code=5272d373-ebab-40ec-b44d-0a9909d0da69"
+  "redirect_uri" : "https://dev.verifier.eudiw.dev/get-wallet-code?response_code=5272d373-ebab-40ec-b44d-0a9909d0da69"
 }
 ```
 * Cross device case
