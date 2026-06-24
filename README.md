@@ -1,7 +1,7 @@
 # Age Verification Verifier Endpoint
 
 **Important!** Before you proceed, please read
-the [EUDI Wallet Reference Implementation project description](https://github.com/eu-digital-identity-wallet/.github/blob/main/profile/reference-implementation.md)
+the [Age Verification Reference Implementation project description](https://github.com/eu-digital-identity-wallet/.github/blob/main/profile/reference-implementation.md)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
@@ -424,7 +424,7 @@ curl -v -X POST 'http://localhost:8080/wallet/direct_post' \
 ```HTTP
 HTTP/1.1 200 OK
 {
-  "redirect_uri" : "https://dev.verifier.eudiw.dev/get-wallet-code?response_code=5272d373-ebab-40ec-b44d-0a9909d0da69"
+  "redirect_uri" : "https://verifier-backend.ageverification.dev/get-wallet-code?response_code=5272d373-ebab-40ec-b44d-0a9909d0da69"
 }
 ```
 * Cross device case
