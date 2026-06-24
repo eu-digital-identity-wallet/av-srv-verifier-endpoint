@@ -98,19 +98,21 @@ The 'verifier' service can be configured by setting its configuration properties
 variables of the service in [docker-compose.yaml](docker/docker-compose.yaml)  
 
 > [!IMPORTANT]  
-> Starting with v0.7.0, the Docker image for Verifier Endpoint is published as `ghcr.io/eu-digital-identity-wallet/eudi-srv-verifier-endpoint`.
+> Starting with v0.7.0, the Docker image for Verifier Endpoint is published as `ghcr.io/eu-digital-identity-wallet/av-srv-verifier-endpoint`.
 
 **Example:**
 ```yaml
   verifier:
-    image: ghcr.io/eu-digital-identity-wallet/eudi-srv-verifier-endpoint:latest
+    image: ghcr.io/eu-digital-identity-wallet/av-srv-verifier-endpoint:latest
     container_name: verifier-backend
     ports:
       - "8080:8080"
     environment:
-      VERIFIER_PUBLICURL: "https://10.240.174.10"
+      VERIFIER_PUBLICURL: "http://localhost:8080"
       VERIFIER_RESPONSE_MODE: "DirectPost"
       VERIFIER_ACCESS_CERTIFICATE_KEYSTORE: file:///keystore.jks
+      VERIFIER_ALWAYSACCEPTWALLETRESPONSE: "true"
+      VERIFIER_MDOC_REDIRECTURICLIENTIDINDEVICEAUTHHANDOVER: "true"
 ```
 
 ### Mount external keystore to be used with Authorization Request signing  
@@ -119,18 +121,20 @@ To provide an external keystore mount it to the path designated by the value of 
 **Example:**
 ```yaml
   verifier:
-    image: ghcr.io/eu-digital-identity-wallet/eudi-srv-verifier-endpoint:latest
+    image: ghcr.io/eu-digital-identity-wallet/av-srv-verifier-endpoint:latest
     container_name: verifier-backend
     ports:
       - "8080:8080"
     environment:
-      VERIFIER_PUBLICURL: "https://10.240.174.10"
+      VERIFIER_PUBLICURL: "http://localhost:8080"
       VERIFIER_RESPONSE_MODE: "DirectPost"
       VERIFIER_ACCESS_CERTIFICATE_KEYSTORE: file:///certs/keystore.jks
       VERIFIER_ACCESS_CERTIFICATE_KEYSTORE_TYPE: "jks"
       VERIFIER_ACCESS_CERTIFICATE_KEYSTORE_PASSWORD: <PASSWORD OF KEYSTORE>
       VERIFIER_ACCESS_CERTIFICATE_ALIAS: <ALIAS OF CERTIFICATE>
       VERIFIER_ACCESS_CERTIFICATE_PASSWORD: <PASSWORD OF CERTIFICATE>
+      VERIFIER_ALWAYSACCEPTWALLETRESPONSE: "true"
+      VERIFIER_MDOC_REDIRECTURICLIENTIDINDEVICEAUTHHANDOVER: "true"
     volumes:
       - <PATH OF KEYSTORE IN HOST MACHINE>/keystore.jks:/certs/keystore.jks
       
@@ -653,6 +657,11 @@ The supported algorithms are for Issuer data, and MDoc authentication are:
 
 Default value: `true`  
 
+Variable: `VERIFIER_MDOC_REDIRECTURICLIENTIDINDEVICEAUTHHANDOVER`  
+Description: When `true`, the verifier uses the `redirect_uri` client identifier prefix when reconstructing the MSO MDoc `SessionTranscript`/`DeviceAuthentication` handover, instead of the default client identifier.  
+Enable this **only** for OpenID4VP 1.0 wallets that use the `redirect_uri` client identifier prefix (e.g. the EUDI / Age Verification wallet). It is incompatible with pre-registered / x509 wallets.  
+Default value: `false`  
+
 Variable: `VERIFIER_VALIDATION_SDJWTVC_STATUSCHECK_ENABLED`  
 Description: Enables status check validation for sd-jwt-vc attestations shared.  
 Default value: `true`  
@@ -699,6 +708,16 @@ Currently, only [eudi-srv-trust-validator](https://github.com/eu-digital-identit
 Variable: `VERIFIER_TRUSTVALIDATOR_SERVICEURL`  
 Description: The URL of the `/trust` endpoint of the service to use for trust verification.          
 Default value: none
+
+### Always-accept mode (Age Verification)
+
+> [!CAUTION]
+>
+> When always-accept mode is enabled, the Verifier Endpoint never rejects a well-formed wallet response on validation grounds. Do not enable it in setups where validation failures must block the presentation.
+
+Variable: `VERIFIER_ALWAYSACCEPTWALLETRESPONSE`  
+Description: When `true`, the verifier never rejects a well-formed wallet response on validation grounds. Every check runs in collect-all mode, the submission is always accepted (HTTP 200), and a per-check `TrustInfo` report is attached and exposed via the get-wallet-response endpoint (field `trust_info`).  
+Default value: `false`
 
 ### Attestation Classifications
 
