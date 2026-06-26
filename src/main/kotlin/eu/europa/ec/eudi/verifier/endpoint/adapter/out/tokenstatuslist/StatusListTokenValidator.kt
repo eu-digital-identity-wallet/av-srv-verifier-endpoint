@@ -34,7 +34,10 @@ import eu.europa.ec.eudi.verifier.endpoint.port.out.persistence.PresentationEven
 import eu.europa.ec.eudi.verifier.endpoint.port.out.persistence.PublishPresentationEvent
 import id.walt.mdoc.doc.MDoc
 import io.ktor.client.*
+import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.seconds
+
+private val log = LoggerFactory.getLogger(StatusListTokenValidator::class.java)
 
 sealed interface StatusValidationError {
     /**
@@ -67,21 +70,27 @@ class StatusListTokenValidator(
     suspend fun validate(
         sdJwtVc: SdJwtAndKbJwt<SignedJWT>,
         transactionId: TransactionId?,
-    ): Status.Valid =
-        sdJwtVc
-            .statusReference()
-            ?.validate(transactionId, StatusListTokenFormat.JWT)
-            ?: Status.Valid
+    ): Status.Valid {
+        val statusReference = sdJwtVc.statusReference()
+        if (null == statusReference) {
+            log.info("SD-JWT VC has no status list reference; skipping status check")
+            return Status.Valid
+        }
+        return statusReference.validate(transactionId, StatusListTokenFormat.JWT)
+    }
 
     context(_: Raise<StatusValidationError>)
     suspend fun validate(
         mdoc: MDoc,
         transactionId: TransactionId?,
-    ): Status.Valid =
-        mdoc.issuerSigned.issuerAuth
-            ?.tokenStatusListReference()
-            ?.validate(transactionId, StatusListTokenFormat.CWT)
-            ?: Status.Valid
+    ): Status.Valid {
+        val statusReference = mdoc.issuerSigned.issuerAuth?.tokenStatusListReference()
+        if (null == statusReference) {
+            log.info("mso_mdoc document has no status list reference; skipping status check")
+            return Status.Valid
+        }
+        return statusReference.validate(transactionId, StatusListTokenFormat.CWT)
+    }
 
     context(_: Raise<StatusValidationError>)
     private suspend fun StatusReference.validate(

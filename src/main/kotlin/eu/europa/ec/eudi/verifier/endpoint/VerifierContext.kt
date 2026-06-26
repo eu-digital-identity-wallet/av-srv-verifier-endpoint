@@ -50,6 +50,10 @@ import eu.europa.ec.eudi.verifier.endpoint.adapter.out.presentation.ValidateSdJw
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.qrcode.GenerateQrCodeFromData
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.sdjwtvc.LookupTypeMetadataFromUrl
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.sdjwtvc.SdJwtVcValidator
+import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.SsrfGuard
+import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.SsrfGuardConfig
+import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.SsrfGuardPlugin
+import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.StatusListSsrfProtection
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist.StatusListTokenValidator
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.x509.ParsePemEncodedX509CertificatesWithNimbus
 import eu.europa.ec.eudi.verifier.endpoint.domain.*
@@ -209,12 +213,51 @@ internal class AppBeans :
             log.info("Enabling Status List Token validations")
             registerBean<StatusListTokenValidator> {
                 val selfSignedProfileActive = env.activeProfiles.contains("self-signed")
-                val httpClient =
-                    if (selfSignedProfileActive) {
-                        createHttpClient(withJsonContentNegotiation = false, trustSelfSigned = true, httpProxy = proxy)
+
+                val ssrfProtection =
+                    if (env.getProperty("verifier.validation.statusList.ssrf.enabled", true)) {
+                        val allowedHosts =
+                            env
+                                .getOptionalList(
+                                    name = "verifier.validation.statusList.ssrf.allowedHosts",
+                                    filter = { it.isNotBlank() },
+                                    transform = { it.trim().lowercase() },
+                                )?.toSet()
+                                .orEmpty()
+                        val guard =
+                            SsrfGuard(
+                                SsrfGuardConfig(
+                                    allowHttp =
+                                        env.getProperty("verifier.validation.statusList.ssrf.allowHttp", false) || selfSignedProfileActive,
+                                    allowedHosts = allowedHosts,
+                                ),
+                            )
+                        StatusListSsrfProtection(
+                            guard = guard,
+                            connectTimeout = Duration.parse(env.getProperty("verifier.validation.statusList.http.connectTimeout", "PT5S")),
+                            requestTimeout = Duration.parse(env.getProperty("verifier.validation.statusList.http.requestTimeout", "PT10S")),
+                            socketTimeout = Duration.parse(env.getProperty("verifier.validation.statusList.http.socketTimeout", "PT10S")),
+                            maxResponseBytes =
+                                env.getProperty(
+                                    "verifier.validation.statusList.http.maxResponseBytes",
+                                    Long::class.java,
+                                    1L * 1024 * 1024,
+                                ),
+                        )
                     } else {
-                        createHttpClient(withJsonContentNegotiation = false, trustSelfSigned = false, httpProxy = proxy)
+                        log.warn("SSRF protection for status list fetching is DISABLED")
+                        null
                     }
+                val enableRedirects = env.getProperty("verifier.validation.statusList.followRedirects", false)
+
+                val httpClient =
+                    createHttpClient(
+                        withJsonContentNegotiation = false,
+                        trustSelfSigned = selfSignedProfileActive,
+                        httpProxy = proxy,
+                        enableRedirects = enableRedirects,
+                        ssrfProtection = ssrfProtection,
+                    )
                 StatusListTokenValidator(httpClient, bean(), bean())
             }
         }
@@ -690,6 +733,8 @@ private fun createHttpClient(
     withJsonContentNegotiation: Boolean = true,
     trustSelfSigned: Boolean = false,
     httpProxy: HttpProxy? = null,
+    enableRedirects: Boolean = true,
+    ssrfProtection: StatusListSsrfProtection? = null,
 ): HttpClient =
     HttpClient(Apache) {
         if (withJsonContentNegotiation) {
@@ -698,11 +743,22 @@ private fun createHttpClient(
             }
         }
         expectSuccess = true
+        if (ssrfProtection != null) {
+            install(HttpTimeout) {
+                connectTimeoutMillis = ssrfProtection.connectTimeout.inWholeMilliseconds
+                requestTimeoutMillis = ssrfProtection.requestTimeout.inWholeMilliseconds
+                socketTimeoutMillis = ssrfProtection.socketTimeout.inWholeMilliseconds
+            }
+            install(SsrfGuardPlugin) {
+                guard = ssrfProtection.guard
+                maxResponseBytes = ssrfProtection.maxResponseBytes
+            }
+        }
         engine {
             if (httpProxy != null) {
                 proxy = ProxyBuilder.http(httpProxy.url)
             }
-            followRedirects = true
+            followRedirects = enableRedirects
             if (trustSelfSigned) {
                 customizeClient {
                     setSSLContext(

@@ -666,6 +666,51 @@ Variable: `VERIFIER_VALIDATION_SDJWTVC_STATUSCHECK_ENABLED`
 Description: Enables status check validation for sd-jwt-vc attestations shared.  
 Default value: `true`  
 
+#### Status List SSRF protection
+
+The `status_list.uri` is taken from the wallet-presented credential. When status checks are enabled, the
+Verifier Endpoint performs an outgoing request to that URL. The following options harden that request
+against Server-Side Request Forgery (SSRF). They apply to both SD-JWT VC and mso_mdoc status checks.
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_SSRF_ENABLED`  
+Description: Enables SSRF protection for status list fetching. When enabled, only `https` URLs are
+accepted, an optional host allow-list is enforced, and hosts that resolve to private/loopback/link-local
+(incl. the cloud metadata address `169.254.169.254`)/site-local/unique-local/CGNAT/multicast addresses
+are rejected.  
+Default value: `true`  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_SSRF_ALLOWHTTP`  
+Description: When `true`, plain `http` status list URLs are accepted in addition to `https`. Intended for
+local development/testing only.  
+Default value: `false`  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_SSRF_ALLOWEDHOSTS`  
+Description: Comma-separated list of hosts allowed for status list fetching (case-insensitive, exact
+match). When empty, any host is accepted as long as it does not resolve to a blocked address.  
+Default value: none  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_FOLLOWREDIRECTS`  
+Description: Whether the status list HTTP client follows HTTP redirects. Disabled by default to avoid
+SSRF via redirect.  
+Default value: `false`  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_HTTP_CONNECTTIMEOUT`  
+Description: Connect timeout for status list fetching, using Java Duration syntax.  
+Default value: `PT5S`  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_HTTP_REQUESTTIMEOUT`  
+Description: Overall request timeout for status list fetching, using Java Duration syntax.  
+Default value: `PT10S`  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_HTTP_SOCKETTIMEOUT`  
+Description: Socket timeout for status list fetching, using Java Duration syntax.  
+Default value: `PT10S`  
+
+Variable: `VERIFIER_VALIDATION_STATUSLIST_HTTP_MAXRESPONSEBYTES`  
+Description: Maximum allowed `Content-Length` (in bytes) of a status list response.  
+Default value: `1048576`  
+
+
 Variable: `VERIFIER_TRANSACTIONDATA_HASHALGORITHM`  
 Description: Hash algorithm to communicate in the `transaction_data_hashes_alg` claim of transaction data  
 Default value: `sha-256`  
