@@ -269,16 +269,16 @@ class PostWalletResponseLive(
         requestId: RequestId,
         walletResponse: AuthorisationResponse,
     ): WalletResponseAcceptedTO? {
-        log.debug(requestId, walletResponse)
+        log.debug(requestId)
 
         val presentation = loadPresentation(requestId)
         ensure(presentation is RequestObjectRetrieved) {
             WalletResponseValidationError.PresentationNotInExpectedState
         }
-        log.debug(presentation, walletResponse)
+        log.debug(presentation)
 
         val responseObject = responseObject(walletResponse, presentation)
-        log.info(presentation.id, responseObject)
+        log.info(presentation.id)
 
         return effect {
             val (submitted, accepted) = submit(presentation, responseObject)
@@ -442,59 +442,17 @@ private fun DCQL.satisfiedBy(response: Map<QueryId, List<VerifiablePresentation>
         ?.fold(true, Boolean::and)
         ?: response.keys.containsAll(credentials.ids)
 
-private val AuthorisationResponse.encryptedResponseOrNull: Jwt?
-    get() =
-        when (this) {
-            is AuthorisationResponse.DirectPost -> null
-            is AuthorisationResponse.DirectPostJwt -> encryptedResponse
-        }
-
-private val AuthorisationResponse.vpTokenOrNull: JsonObject?
-    get() =
-        when (this) {
-            is AuthorisationResponse.DirectPost -> response.vpToken
-            is AuthorisationResponse.DirectPostJwt -> null
-        }
-
-private val RequestObjectRetrieved.ephemeralResponseEncryptionKeyOrNull: JWK?
-    get() =
-        when (responseMode) {
-            ResponseMode.DirectPost -> null
-            is ResponseMode.DirectPostJwt -> responseMode.ephemeralResponseEncryptionKey
-        }
-
-private fun Logger.debug(
-    requestId: RequestId,
-    walletResponse: AuthorisationResponse,
-) {
-    debug(
-        "RequestId({}):: Wallet posted response. \nEncrypted response: '{}', \nVP Token: '{}'",
-        requestId.value,
-        walletResponse.encryptedResponseOrNull,
-        walletResponse.vpTokenOrNull,
-    )
+// NOTE: Wallet response logging intentionally records only identifiers. The vp_token, the encrypted
+// response and the ephemeral decryption key contain personal data / secrets and must never be logged
+// (LOG-01, GDPR Art. 5(1)(c) / Art. 32).
+private fun Logger.debug(requestId: RequestId) {
+    debug("RequestId({}):: Wallet posted response", requestId.value)
 }
 
-private fun Logger.debug(
-    presentation: RequestObjectRetrieved,
-    walletResponse: AuthorisationResponse,
-) {
-    debug(
-        "TransactionId({}):: Wallet posted response. \nEncrypted response: '{}', \nDecryption Key: '{}', \nVP Token: '{}'",
-        presentation.id.value,
-        walletResponse.encryptedResponseOrNull,
-        presentation.ephemeralResponseEncryptionKeyOrNull?.toJSONString(),
-        walletResponse.vpTokenOrNull,
-    )
+private fun Logger.debug(presentation: RequestObjectRetrieved) {
+    debug("TransactionId({}):: Wallet posted response", presentation.id.value)
 }
 
-private fun Logger.info(
-    transactionId: TransactionId,
-    authorizationResponse: AuthorisationResponseTO,
-) {
-    info(
-        "TransactionId({}):: Wallet posted response. \nVP Token: '{}'",
-        transactionId.value,
-        authorizationResponse.vpToken,
-    )
+private fun Logger.info(transactionId: TransactionId) {
+    info("TransactionId({}):: Wallet posted response", transactionId.value)
 }
