@@ -128,6 +128,43 @@ internal fun WalletResponse.toTO(): WalletResponseTO {
 }
 
 /**
+ * A privacy-preserving summary of a [WalletResponse] suitable for persistence in the event log.
+ *
+ * It deliberately contains NO raw vp_token and NO disclosed claim values (GDPR Art. 5(1)(c) /
+ * Art. 25 — data minimization / privacy by design): only the response type, the error code for
+ * error responses, and the PII-free per-check [TrustInfoTO] verdict (when available).
+ */
+@Serializable
+data class WalletResponseSummaryTO(
+    @SerialName("type") val type: WalletResponseTypeTO,
+    @SerialName(RFC6749.ERROR) val error: String? = null,
+    @SerialName("trust_info") val trustInfo: TrustInfoTO? = null,
+)
+
+@Serializable
+enum class WalletResponseTypeTO {
+    @SerialName("vp_token")
+    VpToken,
+
+    @SerialName("error")
+    Error,
+}
+
+internal fun walletResponseSummary(
+    walletResponse: WalletResponse,
+    trustInfo: TrustInfo?,
+): WalletResponseSummaryTO =
+    when (walletResponse) {
+        is WalletResponse.VpToken -> {
+            WalletResponseSummaryTO(type = WalletResponseTypeTO.VpToken, trustInfo = trustInfo?.toTO())
+        }
+
+        is WalletResponse.Error -> {
+            WalletResponseSummaryTO(type = WalletResponseTypeTO.Error, error = walletResponse.value)
+        }
+    }
+
+/**
  * Given a [TransactionId] and a [Nonce] returns the [WalletResponse]
  */
 fun interface GetWalletResponse {
@@ -168,7 +205,7 @@ class GetWalletResponseLive(
 
     private suspend fun found(presentation: Presentation.Submitted): Found<WalletResponseTO> {
         val walletResponse = presentation.walletResponse.toTO().copy(trustInfo = presentation.trustInfo?.toTO())
-        logVerifierGotWalletResponse(presentation, walletResponse)
+        logVerifierGotWalletResponse(presentation)
         return Found(walletResponse)
     }
 
@@ -191,11 +228,9 @@ class GetWalletResponseLive(
         return InvalidState
     }
 
-    private suspend fun logVerifierGotWalletResponse(
-        presentation: Presentation.Submitted,
-        walletResponse: WalletResponseTO,
-    ) {
-        val event = PresentationEvent.VerifierGotWalletResponse(presentation.id, clock.now(), walletResponse)
+    private suspend fun logVerifierGotWalletResponse(presentation: Presentation.Submitted) {
+        val summary = walletResponseSummary(presentation.walletResponse, presentation.trustInfo)
+        val event = PresentationEvent.VerifierGotWalletResponse(presentation.id, clock.now(), summary)
         publishPresentationEvent(event)
     }
 

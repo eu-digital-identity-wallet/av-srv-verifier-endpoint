@@ -285,7 +285,7 @@ class PostWalletResponseLive(
             logWalletResponsePosted(submitted, accepted)
             accepted
         }.recover { cause ->
-            logFailure(presentation, responseObject, cause)
+            logFailure(presentation, cause)
             raise(cause)
         }.bind()
     }
@@ -414,13 +414,17 @@ class PostWalletResponseLive(
         accepted: WalletResponseAcceptedTO?,
     ) {
         val event =
-            PresentationEvent.WalletResponsePosted(p.id, p.submittedAt, p.walletResponse.toTO(), accepted)
+            PresentationEvent.WalletResponsePosted(
+                p.id,
+                p.submittedAt,
+                walletResponseSummary(p.walletResponse, p.trustInfo),
+                accepted,
+            )
         publishPresentationEvent(event)
     }
 
     private suspend fun logFailure(
         presentation: RequestObjectRetrieved,
-        responseObject: AuthorisationResponseTO,
         cause: WalletResponseValidationError,
     ) {
         val event =
@@ -428,7 +432,6 @@ class PostWalletResponseLive(
                 presentation.id,
                 clock.now(),
                 cause,
-                responseObject.vpToken,
             )
         publishPresentationEvent(event)
     }

@@ -93,18 +93,15 @@ private fun toTransferObject(event: PresentationEvent) =
             }
 
             is PresentationEvent.WalletResponsePosted -> {
-                put("wallet_response", event.walletResponse.json())
+                put("wallet_response", event.summary.json())
             }
 
             is PresentationEvent.WalletFailedToPostResponse -> {
                 put("cause", event.cause.asText())
-                if (null != event.vpToken) {
-                    put("vp_token", event.vpToken)
-                }
             }
 
             is PresentationEvent.VerifierGotWalletResponse -> {
-                put("wallet_response", event.walletResponse.json())
+                put("wallet_response", event.summary.json())
             }
 
             is PresentationEvent.VerifierFailedToGetWalletResponse -> {
