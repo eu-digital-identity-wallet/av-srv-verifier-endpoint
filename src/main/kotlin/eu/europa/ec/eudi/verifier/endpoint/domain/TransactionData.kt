@@ -189,10 +189,14 @@ internal value class SignatureQualifier(
 
 /**
  * Unique identifier for a Credential.
+ *
+ * NOTE: Named `CredentialReference` (not `CredentialId`) on purpose: a sibling public type
+ * `CredentialID` exists in this file, and two type names that differ only by case produce
+ * colliding `.class` files on case-insensitive filesystems (macOS/Windows), breaking the build.
  */
 @Serializable
 @JvmInline
-internal value class CredentialId(
+internal value class CredentialReference(
     val value: String,
 ) {
     init {
@@ -367,7 +371,7 @@ internal data class QesApproval(
     @SerialName(RFC9396.LOCATIONS)
     val locations: NonEmptyList<Location>? = null,
     @SerialName(RQES.QUALIFIED_ELECTRONIC_SIGNATURE_AUTHORIZATION_CREDENTIAL_ID)
-    val credentialId: CredentialId? = null,
+    val credentialId: CredentialReference? = null,
     @SerialName(RQES.QUALIFIED_ELECTRONIC_SIGNATURE_AUTHORIZATION_SIGNATURE_QUALIFIER)
     val signatureQualifier: SignatureQualifier? = null,
     @SerialName(RQES.SIGNATURE_CREATION_APPROVAL_NUMBER_OF_SIGNATURES)

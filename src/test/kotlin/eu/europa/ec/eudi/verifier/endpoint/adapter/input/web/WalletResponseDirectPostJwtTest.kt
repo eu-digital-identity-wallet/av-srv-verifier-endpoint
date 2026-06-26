@@ -65,6 +65,8 @@ import kotlin.time.Instant
         "verifier.clientMetadata.responseEncryption.algorithm=ECDH-ES",
         "verifier.clientMetadata.responseEncryption.method=A128GCM",
         "verifier.jwk.embed=ByValue",
+        "verifier.requestJwt.embed=ByReference",
+        "verifier.alwaysAcceptWalletResponse=false",
     ],
 )
 @TestMethodOrder(OrderAnnotation::class)
@@ -247,6 +249,8 @@ internal class WalletResponseDirectPostJwtValidationsDisabledTest {
         "verifier.clientMetadata.responseEncryption.algorithm=ECDH-ES",
         "verifier.clientMetadata.responseEncryption.method=A128GCM",
         "verifier.jwk.embed=ByValue",
+        "verifier.requestJwt.embed=ByReference",
+        "verifier.alwaysAcceptWalletResponse=false",
     ],
 )
 internal class WalletResponseDirectPostJwtValidationsEnabledTest {
@@ -352,6 +356,9 @@ internal class WalletResponseDirectPostJwtValidationsEnabledTest {
         "verifier.clientMetadata.responseEncryption.algorithm=ECDH-ES",
         "verifier.clientMetadata.responseEncryption.method=A128GCM",
         "verifier.jwk.embed=ByValue",
+        "verifier.requestJwt.embed=ByReference",
+        "verifier.alwaysAcceptWalletResponse=false",
+        "verifier.mdoc.redirectUriClientIdInDeviceAuthHandover=false",
         "verifier.validation.sdJwtVc.statusCheck.enabled=false",
         "verifier.attestation-classifications.eaa[0].use-case=mDL",
         "verifier.attestation-classifications.eaa[0].doc-types=org.iso.18013.5.1.mDL",

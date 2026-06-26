@@ -45,6 +45,8 @@ import kotlin.test.*
     properties = [
         "verifier.maxAge=PT6400M",
         "verifier.response.mode=DirectPost",
+        "verifier.requestJwt.embed=ByReference",
+        "verifier.alwaysAcceptWalletResponse=false",
         "verifier.clientMetadata.responseEncryption.algorithm=ECDH-ES",
         "verifier.clientMetadata.responseEncryption.method=A128CBC-HS256",
     ],
