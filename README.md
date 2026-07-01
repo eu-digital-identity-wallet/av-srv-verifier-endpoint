@@ -740,6 +740,18 @@ Variable: `CORS_MAXAGE`
 Description: Time in seconds of how long pre-flight request responses can be cached by clients  
 Default value: `3600`
 
+### Security response headers
+
+The Verifier Endpoint always sends a set of hardening HTTP response headers on every response (not
+configurable). These protect the browser-reachable surfaces (Swagger UI, static content) and provide
+defense-in-depth for the API:
+
+* `X-Content-Type-Options: nosniff`
+* `X-Frame-Options: DENY`
+* `Referrer-Policy: no-referrer`
+* `Strict-Transport-Security: max-age=31536000 ; includeSubDomains` (sent over HTTPS)
+* `Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
+
 ### Configuring trust
 
 Verifier Endpoint verifies whether the Issuer of a Verifiable Credential is trusted or not using an external service. 

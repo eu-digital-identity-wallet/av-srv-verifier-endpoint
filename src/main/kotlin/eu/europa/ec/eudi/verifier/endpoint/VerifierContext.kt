@@ -85,6 +85,8 @@ import org.springframework.http.codec.json.KotlinSerializationJsonDecoder
 import org.springframework.http.codec.json.KotlinSerializationJsonEncoder
 import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
+import org.springframework.security.web.server.header.ReferrerPolicyServerHttpHeadersWriter
+import org.springframework.security.web.server.header.XFrameOptionsServerHttpHeadersWriter
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
 import java.net.URL
@@ -92,6 +94,7 @@ import java.security.KeyStore
 import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
 import kotlin.collections.toSet
+import java.time.Duration as JavaDuration
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -510,6 +513,27 @@ internal class AppBeans :
                         }
                 }
                 csrf { disable() } // cross-site request forgery disabled
+                headers {
+                    contentTypeOptions { } // X-Content-Type-Options: nosniff
+                    frameOptions { mode = XFrameOptionsServerHttpHeadersWriter.Mode.DENY }
+                    referrerPolicy {
+                        policy = ReferrerPolicyServerHttpHeadersWriter.ReferrerPolicy.NO_REFERRER
+                    }
+                    hsts {
+                        includeSubdomains = true
+                        maxAge = JavaDuration.ofDays(365)
+                    }
+                    contentSecurityPolicy {
+                        policyDirectives =
+                            "default-src 'self'; " +
+                            "img-src 'self' data:; " +
+                            "style-src 'self' 'unsafe-inline'; " +
+                            "script-src 'self' 'unsafe-inline'; " +
+                            "object-src 'none'; " +
+                            "base-uri 'self'; " +
+                            "frame-ancestors 'none'"
+                    }
+                }
             }
         }
     })
