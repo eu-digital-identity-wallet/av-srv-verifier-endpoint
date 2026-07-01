@@ -86,7 +86,7 @@ internal val ECKey.supportedEncryptionAlgorithms: NonEmptyList<JWEAlgorithm>
         nonEmptyListOf(
             JWEAlgorithm.ECDH_ES,
             JWEAlgorithm.ECDH_ES_A128KW,
-            JWEAlgorithm.ECDH_ES_A128KW,
+            JWEAlgorithm.ECDH_ES_A192KW,
             JWEAlgorithm.ECDH_ES_A256KW,
         )
 
@@ -95,7 +95,7 @@ internal val OctetKeyPair.supportedEncryptionAlgorithms: NonEmptyList<JWEAlgorit
         nonEmptyListOf(
             JWEAlgorithm.ECDH_ES,
             JWEAlgorithm.ECDH_ES_A128KW,
-            JWEAlgorithm.ECDH_ES_A128KW,
+            JWEAlgorithm.ECDH_ES_A192KW,
             JWEAlgorithm.ECDH_ES_A256KW,
         )
 
@@ -116,7 +116,7 @@ internal val encryptionAlgorithmPreferenceMap =
         JWEAlgorithm.RSA_OAEP_512 to 0,
         JWEAlgorithm.ECDH_ES_A128KW to 1,
         JWEAlgorithm.RSA_OAEP_384 to 1,
-        JWEAlgorithm.ECDH_ES_A128KW to 2,
+        JWEAlgorithm.ECDH_ES_A192KW to 2,
         JWEAlgorithm.RSA_OAEP_256 to 2,
         JWEAlgorithm.ECDH_ES to 3,
     )
