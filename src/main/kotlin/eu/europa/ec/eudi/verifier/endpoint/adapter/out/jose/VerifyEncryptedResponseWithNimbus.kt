@@ -25,6 +25,7 @@ import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet
 import com.nimbusds.jose.proc.JWEDecryptionKeySelector
 import com.nimbusds.jose.proc.SecurityContext
+import com.nimbusds.jose.util.Base64URL
 import com.nimbusds.jose.util.JSONObjectUtils
 import com.nimbusds.jwt.EncryptedJWT
 import com.nimbusds.jwt.JWTClaimsSet
@@ -55,6 +56,7 @@ class VerifyEncryptedResponseWithNimbus(
             catch(
                 block = {
                     val encryptedJwt = EncryptedJWT.parse(encryptedResponse)
+                    ensureApvBoundToNonce(encryptedJwt, apv)
                     val processor = encryptedProcessor(ephemeralResponseEncryptionKey, encryptedJwt)
                     val claimSet = processor.process(encryptedJwt, null)
                     claimSet.mapToDomain()
@@ -68,6 +70,22 @@ class VerifyEncryptedResponseWithNimbus(
                 },
             )
         }
+
+    /**
+     * Enforces the JWE-layer binding to the transaction nonce (SEC-16): the `apv` header of the
+     * encrypted response must equal the Base64URL encoding of the expected presentation [nonce].
+     * The wallet sets `apv` to `Base64URL(nonce)`; a mismatch (or missing header) is rejected.
+     */
+    private fun ensureApvBoundToNonce(
+        encryptedJwt: EncryptedJWT,
+        nonce: Nonce,
+    ) {
+        val expected = Base64URL.encode(nonce.value)
+        val actual = encryptedJwt.header.agreementPartyVInfo
+        require(expected == actual) {
+            "Encrypted response 'apv' header does not match the expected transaction nonce"
+        }
+    }
 
     private fun encryptedProcessor(
         ephemeralResponseEncryptionKey: JWK,
