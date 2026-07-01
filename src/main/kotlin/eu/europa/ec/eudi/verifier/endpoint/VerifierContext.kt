@@ -94,12 +94,12 @@ import java.security.KeyStore
 import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
 import kotlin.collections.toSet
-import java.time.Duration as JavaDuration
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.toJavaDuration
 import eu.europa.ec.eudi.etsi1196x2.consultation.AttestationClassifications as ConsultationAttestationClassifications
+import java.time.Duration as JavaDuration
 
 private val log = LoggerFactory.getLogger(VerifierApplication::class.java)
 

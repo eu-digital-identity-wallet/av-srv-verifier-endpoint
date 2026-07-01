@@ -189,11 +189,9 @@ class GetWalletResponseLive(
             }
 
             is Presentation.Submitted -> {
-                when (responseCode) {
-                    null,
-                    presentation.responseCode,
-                    -> found(presentation)
-
+                when (presentation.responseCode) {
+                    null -> found(presentation)
+                    responseCode -> found(presentation)
                     else -> responseCodeMismatch(presentation, responseCode)
                 }
             }
