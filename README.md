@@ -600,16 +600,16 @@ Possible values: `DirectPost`, `DirectPostJwt`
 Default value: `DirectPostJwt`
 
 Variable: `VERIFIER_MAXAGE`  
-Description: TTL of an Authorization Request  
-Notes: Provide a value using Java Duration syntax  
-Example: `PT6400M`  
-Default value: `PT6400M`
+Description: TTL of an Authorization Request. Once this age is reached, a presentation's wallet response (`vp_token` / disclosed claims) is discarded (`Submitted` -> `TimedOut` drops the payload).  
+Notes: Provide a value using Java Duration syntax.  
+Example: `PT1H`  
+Default value: `PT1H`
 
 Variable: `VERIFIER_PRESENTATIONS_CLEANUP_MAXAGE`  
-Description: Age of Authorization Requests. Authorization Requests older than this, are deleted.     
-Notes: Provide a value using Java Duration syntax  
-Example: `P10D`  
-Default value: `P10D`
+Description: Age of Authorization Requests. Authorization Requests older than this, are deleted. By this point the record is already PII-free (see `VERIFIER_MAXAGE`); cleanup fully removes it.     
+Notes: Provide a value using Java Duration syntax.  
+Example: `PT2H`  
+Default value: `PT2H`
 
 Variable: `VERIFIER_AUTHORIZATIONREQUESTURI`  
 Description: The Authorization Request Uri to be used when generating an Authorization Request.      
