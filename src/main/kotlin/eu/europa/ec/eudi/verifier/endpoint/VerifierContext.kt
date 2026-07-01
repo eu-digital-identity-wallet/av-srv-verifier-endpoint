@@ -482,7 +482,7 @@ internal class AppBeans :
 
                 it.defaultCodecs().kotlinSerializationJsonDecoder(KotlinSerializationJsonDecoder(json))
                 it.defaultCodecs().kotlinSerializationJsonEncoder(KotlinSerializationJsonEncoder(json))
-                it.defaultCodecs().enableLoggingRequestDetails(true)
+                it.defaultCodecs().enableLoggingRequestDetails(false)
             }
         }
         registerBean {
