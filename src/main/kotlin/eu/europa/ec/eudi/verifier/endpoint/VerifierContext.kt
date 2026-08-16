@@ -261,7 +261,12 @@ internal class AppBeans :
                         enableRedirects = enableRedirects,
                         ssrfProtection = ssrfProtection,
                     )
-                StatusListTokenValidator(httpClient, bean(), bean())
+                StatusListTokenValidator(
+                    httpClient = httpClient,
+                    clock = bean(),
+                    publishPresentationEvent = bean(),
+                    isChainTrustedForContext = bean(),
+                )
             }
         }
 

@@ -15,6 +15,7 @@
  */
 package eu.europa.ec.eudi.verifier.endpoint.adapter.out.tokenstatuslist
 
+import arrow.core.NonEmptyList
 import arrow.core.raise.Raise
 import arrow.core.raise.catch
 import arrow.core.raise.context.ensure
@@ -23,6 +24,10 @@ import com.nimbusds.jwt.SignedJWT
 import eu.europa.ec.eudi.sdjwt.SdJwtAndKbJwt
 import eu.europa.ec.eudi.statium.GetStatus
 import eu.europa.ec.eudi.statium.GetStatusListToken
+import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrustedForContextF
+import eu.europa.ec.eudi.etsi1196x2.consultation.VerificationContext
+import java.security.cert.TrustAnchor
+import java.security.cert.X509Certificate
 import eu.europa.ec.eudi.statium.Status
 import eu.europa.ec.eudi.statium.StatusReference
 import eu.europa.ec.eudi.verifier.endpoint.adapter.out.mso.tokenStatusListReference
@@ -65,6 +70,8 @@ class StatusListTokenValidator(
     private val httpClient: HttpClient,
     private val clock: Clock,
     private val publishPresentationEvent: PublishPresentationEvent,
+    private val isChainTrustedForContext:
+        IsChainTrustedForContextF<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>,
 ) {
     context(_: Raise<StatusValidationError>)
     suspend fun validate(
@@ -122,7 +129,10 @@ class StatusListTokenValidator(
                     GetStatusListToken.usingJwt(
                         clock = clock.asKotlinClock(),
                         httpClient = httpClient,
-                        verifyStatusListTokenSignature = { _, _ -> Result.success(Unit) },
+                        verifyStatusListTokenSignature =
+                            verifyStatusListTokenJwtSignatureWithX5c(
+                                isChainTrustedForContext,
+                            ),
                         allowedClockSkew = 15.seconds,
                     )
                 }
